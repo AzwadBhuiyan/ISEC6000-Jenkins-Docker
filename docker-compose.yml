@@ -1,0 +1,56 @@
+services:
+  # Docker-in-Docker service providing isolated container build runtime
+  jenkins-docker:
+    image: docker:dind
+    container_name: jenkins-docker
+    privileged: true
+    environment:
+      # Enable TLS encryption for secure communication between Controller and Daemon
+      DOCKER_TLS_CERTDIR: /certs
+    volumes:
+      # Persistent storage for Docker build cache and TLS certificates
+      - jenkins-docker-certs:/certs/client
+      - jenkins-data:/var/jenkins_home
+    networks:
+      jenkins-net:
+        aliases:
+          - docker
+    restart: unless-stopped
+
+  # Jenkins Controller running the web interface and orchestrating pipelines
+  jenkins-controller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jenkins-controller
+    # Security: Bind Jenkins exclusively to localhost (127.0.0.1) to prevent external exposure
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:50000:50000"
+    environment:
+      # TLS connection parameters to talk securely to the DinD daemon
+      DOCKER_HOST: tcp://docker:2376
+      DOCKER_CERT_PATH: /certs/client
+      DOCKER_TLS_VERIFY: 1
+    volumes:
+      # Persistent volume for Jenkins pipeline jobs, credentials, and settings
+      - jenkins-data:/var/jenkins_home
+      # Mount DinD TLS client certificates read-only
+      - jenkins-docker-certs:/certs/client:ro
+    networks:
+      - jenkins-net
+    depends_on:
+      - jenkins-docker
+    restart: unless-stopped
+
+# Isolated bridge network for internal communication between services
+networks:
+  jenkins-net:
+    name: jenkins-net
+
+# Persistent Docker volumes
+volumes:
+  jenkins-data:
+    name: isec6000-jenkins-docker_jenkins-data
+  jenkins-docker-certs:
+    name: isec6000-jenkins-docker_jenkins-certs
